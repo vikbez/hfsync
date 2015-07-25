@@ -196,8 +196,11 @@ func download(file_url string) (string, error) {
     // handling speed limits
     for range time.Tick(1 * time.Second) {
         _, err := io.CopyN(file, res.Body, int64(_G.Config.Server.MaxSpeed))
-        if err != nil && err.Error() == "EOF" { break }
-        else if err != nil { return "", err }
+        if err != nil && err.Error() == "EOF" {
+            break
+        } else if err != nil {
+            return "", err
+        }
     }
     os.Rename(file_path + "__TMP", file_path)
 
