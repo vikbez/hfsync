@@ -10,6 +10,7 @@ import (
     "log"
     "net"
     "net/http"
+    "net/url"
     "os"
     "path"
     "strconv"
@@ -160,7 +161,7 @@ func main() {
                 log.Println(err)
 
             // download if server file more recent or no local file
-            } else if os.IsNotExist(err) || stat.ModTime().Unix() < int64(srv_mod_date) || stat.Size() == 0 {
+            } else if os.IsNotExist(err) || stat.ModTime().Unix() < int64(srv_mod_date) {
                 linkChan <- line[0]
             }
         }
@@ -187,6 +188,8 @@ func downloader(linkChan chan string) {
 
 func download(file_url string) (string, error) {
     file_path := path.Join(_G.Config.Files.DlFolder, file_url)
+    file_url = strings.Replace(url.QueryEscape(file_url), "%2F", "/", -1)
+    file_url = strings.Replace(file_url, "+", "%20", -1)
     full_url := _G.Config.Server.Url + ":" + strconv.Itoa(_G.Config.Server.Port) + "/" + file_url
 
     fmt.Printf("Downloading [%s] to [%s]\n", full_url, file_path)
