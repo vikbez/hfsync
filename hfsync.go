@@ -4,6 +4,7 @@ import (
     "crypto/sha1"
     "encoding/csv"
     "errors"
+    "flag"
     "fmt"
     "io"
     "log"
@@ -45,6 +46,7 @@ type CONFIG struct {
     WORKER_NUM  int
     UID         string
     HttpClient  *http.Client
+    wg          *sync.WaitGroup
 }
 
 var _G CONFIG
@@ -53,7 +55,15 @@ func init() {
     _G.WORKER_NUM = 3
     _G.UID = getUid()
     _G.HttpClient = &http.Client{}
+    _G.wg = new(sync.WaitGroup)
     confFile := "hfsync.ini"
+
+    var keyFlag = flag.Bool("key", false, "output the private key then exit")
+    flag.Parse()
+    if *keyFlag {
+        fmt.Println(getUid())
+        os.Exit(0)
+    }
 
     // creating config
     _, err := os.Stat(confFile)
@@ -108,21 +118,17 @@ func inIgnoreList(url string) (bool) {
 }
 
 func main() {
-    linkChan := make(chan string)
-    wg := new(sync.WaitGroup)
-
-    fmt.Printf("Username: %s\n", _G.Config.User.Name)
-    fmt.Printf("Password: %s\n", _G.UID)
     fmt.Printf("Destination Folder: %s\n", _G.Config.Files.DlFolder)
     fmt.Printf("Ignore: %v\n", _G.Config.Files.IgnoreList)
 
-    // creating workers
-    for i := 0; i < _G.WORKER_NUM; i++ {
-        wg.Add(1)
-        go downloader(linkChan, wg)
-    }
-
     for {
+        linkChan := make(chan string)
+        // creating workers
+        for i := 0; i < _G.WORKER_NUM; i++ {
+            _G.wg.Add(1)
+            go downloader(linkChan)
+        }
+
         // download file list
         csvpath, err := download("files.csv")
         if err != nil { log.Fatal(err) }
@@ -130,13 +136,14 @@ func main() {
         // read csv
         csvfile, err := os.Open(csvpath)
         if err != nil { log.Fatal(err) }
-        defer csvfile.Close()
 
         // process csv
         reader := csv.NewReader(csvfile)
         reader.FieldsPerRecord = -1
 
         rawCSVdata, err := reader.ReadAll()
+        if err != nil { log.Fatal(err) }
+        err = csvfile.Close()
         if err != nil { log.Fatal(err) }
 
         // for each file
@@ -148,6 +155,7 @@ func main() {
             srv_mod_date, err := strconv.ParseFloat(line[1], 32)
             stat, err := os.Stat(path.Join(_G.Config.Files.DlFolder, line[0]))
 
+            // file stat error other than file does not exist
             if err != nil && !os.IsNotExist(err) {
                 log.Println(err)
 
@@ -159,18 +167,21 @@ func main() {
 
         // wait for workers to finish
         close(linkChan)
-        wg.Wait()
+        _G.wg.Wait()
 
+        // quit if wait time < 1
+        if (_G.Config.Files.CheckTime < 1) { break; }
         // wait until next fetch
+        fmt.Println("Waiting.")
         time.Sleep(time.Duration(_G.Config.Files.CheckTime) * time.Second)
     }
 }
 
-func downloader(linkChan chan string, wg *sync.WaitGroup) {
-    defer wg.Done()
-
+func downloader(linkChan chan string) {
+    defer _G.wg.Done()
     for url := range linkChan {
-        download(url)
+        _, err := download(url)
+        if err != nil { log.Println(err) }
     }
 }
 
@@ -178,20 +189,18 @@ func download(file_url string) (string, error) {
     file_path := path.Join(_G.Config.Files.DlFolder, file_url)
     full_url := _G.Config.Server.Url + ":" + strconv.Itoa(_G.Config.Server.Port) + "/" + file_url
 
-    fmt.Printf("DOWNLOADING: %s\n         TO: %s\n", full_url, file_path)
+    fmt.Printf("Downloading [%s] to [%s]\n", full_url, file_path)
     os.MkdirAll(path.Dir(file_path), os.FileMode(0755))
 
-    file, err := os.Create(file_path + "__TMP")
+    file, err := os.Create(file_path + "_TMP")
     if err != nil { return "", err }
     defer file.Close()
 
     req, err := http.NewRequest("GET", full_url, nil)
     req.SetBasicAuth(_G.Config.User.Name, _G.UID)
     res, err := _G.HttpClient.Do(req)
-
-    if err != nil { return "", err }
-    if res.StatusCode != 200 { return "", errors.New(res.Status) }
     defer res.Body.Close()
+    if res.StatusCode != 200 { return "", errors.New(res.Status) }
 
     // handling speed limits
     for range time.Tick(1 * time.Second) {
@@ -202,7 +211,12 @@ func download(file_url string) (string, error) {
             return "", err
         }
     }
-    os.Rename(file_path + "__TMP", file_path)
+    err = file.Close()
+    if err != nil { return "", err }
+
+    os.Remove(file_path)
+    err = os.Rename(file_path + "_TMP", file_path)
+    if err != nil { return "", err }
 
     return file_path, nil
 }
