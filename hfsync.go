@@ -220,6 +220,7 @@ func download(file_url string) (string, error) {
     req, err := http.NewRequest("GET", full_url, nil)
     req.SetBasicAuth(_G.UID, _G.Config.User.Name)
     res, err := _G.HttpClient.Do(req)
+    if err != nil { return "", err }
     defer res.Body.Close()
     if res.StatusCode != 200 { return "", errors.New(res.Status) }
 
