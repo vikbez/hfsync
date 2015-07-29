@@ -119,8 +119,16 @@ func inIgnoreList(url string) (bool) {
 }
 
 func main() {
-    fmt.Printf("Destination Folder: %s\n", _G.Config.Files.DlFolder)
-    fmt.Printf("Ignore: %v\n", _G.Config.Files.IgnoreList)
+    fmt.Printf("Destination Folder:\n    %s\n", _G.Config.Files.DlFolder)
+    fmt.Println("Ignore list:")
+    for _, val := range _G.Config.Files.IgnoreList {
+        fmt.Printf("    %s\n", val)
+    }
+    var totalSize int64
+    var doneSize int64
+    var size int64
+
+    var todo []*[]string
 
     for {
         linkChan := make(chan string)
@@ -147,11 +155,10 @@ func main() {
         err = csvfile.Close()
         if err != nil { log.Fatal(err) }
 
+        totalSize = 0
         // for each file
-        for _, line := range rawCSVdata {
-            if (inIgnoreList(line[0])) {
-                continue
-            }
+        for i, line := range rawCSVdata {
+            if (inIgnoreList(line[0])) { continue }
 
             srv_mod_date, err := strconv.ParseFloat(line[1], 32)
             stat, err := os.Stat(path.Join(_G.Config.Files.DlFolder, line[0]))
@@ -162,10 +169,22 @@ func main() {
 
             // download if server file more recent or no local file
             } else if os.IsNotExist(err) || stat.ModTime().Unix() < int64(srv_mod_date) {
-                linkChan <- line[0]
+                size, _ = strconv.ParseInt(line[2], 10, 64)
+                totalSize += size
+                todo = append(todo, &rawCSVdata[i])
             }
         }
 
+        doneSize = 0
+        // actually download the files
+        for i := range todo {
+            fmt.Printf("[%d%%] - %s\n", (100 * doneSize / totalSize), (*todo[i])[0])
+            size, _ = strconv.ParseInt((*todo[i])[2], 10, 64)
+            doneSize += size
+            linkChan <- (*todo[i])[0]
+        }
+
+        todo = nil
         // wait for workers to finish
         close(linkChan)
         _G.wg.Wait()
@@ -192,7 +211,6 @@ func download(file_url string) (string, error) {
     file_url = strings.Replace(file_url, "+", "%20", -1)
     full_url := _G.Config.Server.Url + ":" + strconv.Itoa(_G.Config.Server.Port) + "/" + file_url
 
-    fmt.Printf("Downloading [%s] to [%s]\n", full_url, file_path)
     os.MkdirAll(path.Dir(file_path), os.FileMode(0755))
 
     file, err := os.Create(file_path + "_TMP")
