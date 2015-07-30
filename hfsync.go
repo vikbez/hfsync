@@ -44,7 +44,7 @@ type tomlFiles struct {
 
 type CONFIG struct {
     Config      tomlConfig
-    WORKER_NUM  int
+    WORKER_NUM  *int
     UID         string
     HttpClient  *http.Client
     wg          *sync.WaitGroup
@@ -53,12 +53,12 @@ type CONFIG struct {
 var _G CONFIG
 
 func init() {
-    _G.WORKER_NUM = 3
     _G.UID = getUid()
     _G.HttpClient = &http.Client{}
     _G.wg = new(sync.WaitGroup)
 
     var keyFlag = flag.Bool("key", false, "output the private key then exit")
+    _G.WORKER_NUM = flag.Int("threads", 3, "number of threads to use")
     var confFile = flag.String("config", "hfsync.ini", "specify config file path")
     flag.Parse()
     if *keyFlag {
@@ -92,7 +92,9 @@ func init() {
     }
 
     // this is not exact science
-    _G.Config.Server.MaxSpeed = _G.Config.Server.MaxSpeed * 1000 / _G.WORKER_NUM
+    if (_G.Config.Server.MaxSpeed > 0) {
+        _G.Config.Server.MaxSpeed = _G.Config.Server.MaxSpeed * 1000 / *_G.WORKER_NUM
+    }
 }
 
 // Unique id generation
@@ -133,7 +135,7 @@ func main() {
     for {
         linkChan := make(chan string)
         // creating workers
-        for i := 0; i < _G.WORKER_NUM; i++ {
+        for i := 0; i < *_G.WORKER_NUM; i++ {
             _G.wg.Add(1)
             go downloader(linkChan)
         }
@@ -226,13 +228,18 @@ func download(file_url string) (string, error) {
     if res.StatusCode != 200 { return "", errors.New(res.Status) }
 
     // handling speed limits
-    for range time.Tick(1 * time.Second) {
-        _, err := io.CopyN(file, res.Body, int64(_G.Config.Server.MaxSpeed))
-        if err != nil && err.Error() == "EOF" {
-            break
-        } else if err != nil {
-            return "", err
+    if (_G.Config.Server.MaxSpeed > 0) {
+        for range time.Tick(1 * time.Second) {
+            _, err := io.CopyN(file, res.Body, int64(_G.Config.Server.MaxSpeed))
+            if err != nil && err.Error() == "EOF" {
+                break
+            } else if err != nil {
+                return "", err
+            }
         }
+    } else {
+        _, err := io.Copy(file, res.Body)
+        if err != nil { return "", err }
     }
     err = file.Close()
     if err != nil { return "", err }
