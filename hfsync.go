@@ -139,6 +139,7 @@ func main() {
         }
 
         // download file list
+        fmt.Println("Downloading file index ...")
         csvpath, err := download("files.csv")
         if err != nil { log.Fatal(err) }
 
