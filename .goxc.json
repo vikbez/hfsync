@@ -5,7 +5,7 @@
 	],
 	"Os": "linux windows darwin",
 	"ResourcesInclude": "INSTALL*,README*,LICENSE*,hfsync.ini",
-	"PackageVersion": "1.0.5",
+	"PackageVersion": "1.0.6",
 	"PrereleaseInfo": "snapshot",
 	"TaskSettings": {
 		"publish-github": {
