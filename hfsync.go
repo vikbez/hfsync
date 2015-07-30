@@ -57,9 +57,9 @@ func init() {
     _G.UID = getUid()
     _G.HttpClient = &http.Client{}
     _G.wg = new(sync.WaitGroup)
-    confFile := "hfsync.ini"
 
     var keyFlag = flag.Bool("key", false, "output the private key then exit")
+    var confFile = flag.String("config", "hfsync.ini", "specify config file path")
     flag.Parse()
     if *keyFlag {
         fmt.Println(getUid())
@@ -67,7 +67,7 @@ func init() {
     }
 
     // creating config
-    _, err := os.Stat(confFile)
+    _, err := os.Stat(*confFile)
     if os.IsNotExist(err) {
         _G.Config.Server.Url = "http://some.server"
         _G.Config.Server.Port = 80
@@ -75,16 +75,16 @@ func init() {
         _G.Config.Files.CheckTime = 21600
         _G.Config.Files.IgnoreList = []string{"some/files", "to/ignore"}
 
-        file, err := os.Create(confFile)
+        file, err := os.Create(*confFile)
         if err != nil { log.Fatal("Error creating config file.") }
 
         err = toml.NewEncoder(file).Encode(_G.Config)
         if err != nil { log.Fatalf("Error encoding TOML: %s", err) }
-        log.Fatalf("Config file %s created, please edit it.", confFile)
+        log.Fatalf("Config file %s created, please edit it.", *confFile)
     }
 
     // reading config
-    _, err = toml.DecodeFile(confFile, &_G.Config)
+    _, err = toml.DecodeFile(*confFile, &_G.Config)
     if err != nil { log.Fatalf("Error decoding config file: %s", err) }
 
     if _G.Config.Files.DlFolder == "" {
