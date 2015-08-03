@@ -39,6 +39,7 @@ type tomlServer struct {
 type tomlFiles struct {
     CheckTime   int         `toml:"check_time"`
     IgnoreList  []string    `toml:"ignore_list"`
+    DlList      []string    `toml:"download_list"`
     DlFolder    string      `toml:"download_folder"`
 }
 
@@ -74,6 +75,7 @@ func init() {
         _G.Config.Server.MaxSpeed = 1000
         _G.Config.Files.CheckTime = 21600
         _G.Config.Files.IgnoreList = []string{"some/files", "to/ignore"}
+        _G.Config.Files.DlList = []string{}
 
         file, err := os.Create(*confFile)
         if err != nil { log.Fatal("Error creating config file.") }
@@ -111,21 +113,36 @@ func getUid() (string) {
     return sha1uid
 }
 
-func inIgnoreList(url string) (bool) {
-    for _, val := range _G.Config.Files.IgnoreList {
-        if strings.HasPrefix(url, val) {
-            return true
+func mustDownload(url string) (bool) {
+    if (len(_G.Config.Files.DlList) > 0) {
+        for _, val := range _G.Config.Files.DlList {
+            if strings.HasPrefix(url, val) { return true }
         }
+        return false;
+    } else {
+        for _, val := range _G.Config.Files.IgnoreList {
+            if strings.HasPrefix(url, val) { return false }
+        }
+        return true;
     }
-    return false
+    return true;
 }
 
 func main() {
     fmt.Printf("Destination Folder:\n    %s\n", _G.Config.Files.DlFolder)
-    fmt.Println("Ignore list:")
-    for _, val := range _G.Config.Files.IgnoreList {
-        fmt.Printf("    %s\n", val)
+
+    if (len(_G.Config.Files.DlList) > 0) {
+        fmt.Println("Downloading only:")
+        for _, val := range _G.Config.Files.DlList {
+            fmt.Printf("    %s\n", val)
+        }
+    } else if (len(_G.Config.Files.IgnoreList) > 0) {
+        fmt.Println("Ignore list:")
+        for _, val := range _G.Config.Files.IgnoreList {
+            fmt.Printf("    %s\n", val)
+        }
     }
+
     var totalSize int64
     var doneSize int64
     var size int64
@@ -161,7 +178,7 @@ func main() {
         totalSize = 0
         // for each file
         for i, line := range rawCSVdata {
-            if (inIgnoreList(line[0])) { continue }
+            if (!mustDownload(line[0])) { continue }
 
             srv_mod_date, err := strconv.ParseFloat(line[1], 32)
             stat, err := os.Stat(path.Join(_G.Config.Files.DlFolder, line[0]))
